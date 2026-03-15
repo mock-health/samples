@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vital Signs — SMART on FHIR Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1e293b; background: #f8fafc; line-height: 1.5;
+      display: flex; justify-content: center; padding: 2rem 1rem;
+    }
+    .app { max-width: 640px; width: 100%; }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    h1 span { font-weight: 400; color: #64748b; font-size: 0.875rem; display: block; margin-top: 0.25rem; }
+    .card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 0.75rem;
+      padding: 1.5rem; margin-bottom: 1.25rem;
+    }
+    label { display: block; font-size: 0.8125rem; font-weight: 600; color: #475569; margin-bottom: 0.375rem; }
+    input {
+      width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.5rem;
+      font-size: 0.875rem; outline: none; transition: border-color 0.15s;
+    }
+    input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    button {
+      cursor: pointer; border: none; border-radius: 0.5rem; font-size: 0.875rem;
+      font-weight: 600; padding: 0.625rem 1.25rem; transition: background 0.15s;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; width: 100%; margin-top: 1rem; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-tab {
+      background: #f1f5f9; color: #475569; padding: 0.375rem 0.75rem;
+      border-radius: 9999px; font-size: 0.8125rem; margin: 0.25rem 0.25rem 0.25rem 0;
+    }
+    .btn-tab.active { background: #3b82f6; color: #fff; }
+    .btn-link {
+      background: none; color: #3b82f6; text-decoration: underline; padding: 0;
+      font-size: 0.8125rem; font-weight: 400;
+    }
+
+    /* Patient banner */
+    .banner {
+      display: flex; align-items: center; gap: 1rem;
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 0.75rem;
+      padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    }
+    .avatar {
+      width: 3rem; height: 3rem; border-radius: 9999px; background: #3b82f6;
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.125rem; flex-shrink: 0;
+    }
+    .banner-name { font-weight: 700; font-size: 1rem; }
+    .banner-detail { font-size: 0.8125rem; color: #475569; }
+
+    /* Spinner */
+    .spinner-wrap { text-align: center; padding: 3rem 0; }
+    .spinner {
+      width: 2.5rem; height: 2.5rem; border: 3px solid #e2e8f0;
+      border-top-color: #3b82f6; border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .error-card { border-color: #fca5a5; background: #fef2f2; }
+    .error-card h2 { color: #dc2626; font-size: 1rem; margin-bottom: 0.5rem; }
+    .error-card p { font-size: 0.875rem; color: #991b1b; word-break: break-word; }
+
+    /* Chart + table */
+    .tabs { display: flex; flex-wrap: wrap; margin-bottom: 1rem; }
+    .chart-wrap { position: relative; height: 280px; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; }
+    th { color: #64748b; font-weight: 600; }
+
+    .hidden { display: none !important; }
+    .field + .field { margin-top: 0.875rem; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── Launch Screen ─── -->
+  <div id="screen-launch">
+    <h1>Vital Signs<span>SMART on FHIR Demo</span></h1>
+    <div class="card" style="margin-top:1.25rem">
+      <div class="field">
+        <label for="fhir-url">FHIR Server URL</label>
+        <input id="fhir-url" value="https://api.mock.health" placeholder="https://api.mock.health">
+      </div>
+      <div class="field">
+        <label for="client-id">Client ID</label>
+        <input id="client-id" placeholder="Paste your SMART app client_id">
+      </div>
+      <button class="btn-primary" id="btn-connect" onclick="startAuth()">Connect</button>
+      <p style="margin-top:0.75rem;font-size:0.75rem;color:#64748b;text-align:center">
+        Don't have a client ID? <a href="https://mock.health/sandbox/apps/new" target="_blank">Register a SMART app</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- ─── Loading Screen ─── -->
+  <div id="screen-loading" class="hidden">
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <p id="loading-msg" style="color:#64748b;font-size:0.875rem">Connecting…</p>
+    </div>
+  </div>
+
+  <!-- ─── Error Screen ─── -->
+  <div id="screen-error" class="hidden">
+    <div class="card error-card">
+      <h2>Something went wrong</h2>
+      <p id="error-msg"></p>
+      <button class="btn-primary" style="background:#dc2626;margin-top:1rem" onclick="reset()">Try Again</button>
+    </div>
+  </div>
+
+  <!-- ─── Dashboard ─── -->
+  <div id="screen-dashboard" class="hidden">
+    <div class="banner">
+      <div class="avatar" id="avatar"></div>
+      <div>
+        <div class="banner-name" id="pt-name"></div>
+        <div class="banner-detail" id="pt-detail"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="tabs"></div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      <table>
+        <thead><tr><th>Date</th><th>Value</th></tr></thead>
+        <tbody id="readings"></tbody>
+      </table>
+    </div>
+
+    <div style="text-align:center;margin-top:0.5rem">
+      <button class="btn-link" onclick="reset()">Disconnect</button>
+    </div>
+  </div>
+
+</div>
+<script>
+// ── Config ───────────────────────────────────────────────────────────
+const VITAL_TYPES = {
+  'heart-rate':    { loinc: '8867-4',  label: 'Heart Rate',  unit: 'bpm',  color: '#ef4444' },
+  'blood-pressure':{ loinc: '85354-9', label: 'Blood Pressure', unit: 'mmHg', color: '#8b5cf6' },
+  'temperature':   { loinc: '8310-5',  label: 'Temperature', unit: '°F',   color: '#f59e0b' },
+  'spo2':          { loinc: '2708-6',  label: 'SpO2',        unit: '%',    color: '#06b6d4' },
+  'weight':        { loinc: '29463-7', label: 'Weight',      unit: 'kg',   color: '#22c55e' },
+  'bmi':           { loinc: '39156-5', label: 'BMI',         unit: 'kg/m²',color: '#64748b' },
+};
+
+const BP_SYSTOLIC  = '8480-6';
+const BP_DIASTOLIC = '8462-4';
+
+let chart = null;
+
+// ── Screen helpers ───────────────────────────────────────────────────
+function show(id) {
+  ['screen-launch','screen-loading','screen-error','screen-dashboard'].forEach(s =>
+    document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  show('screen-error');
+}
+
+function reset() {
+  sessionStorage.clear();
+  history.replaceState(null, '', location.pathname);
+  show('screen-launch');
+}
+
+// ── PKCE ─────────────────────────────────────────────────────────────
+function generateCodeVerifier(len = 64) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return base64url(arr);
+}
+
+async function computeCodeChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return base64url(new Uint8Array(digest));
+}
+
+function base64url(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// ── Auth Flow ────────────────────────────────────────────────────────
+async function startAuth() {
+  const baseUrl = document.getElementById('fhir-url').value.replace(/\/+$/, '');
+  const clientId = document.getElementById('client-id').value.trim();
+  if (!clientId) return alert('Enter a Client ID');
+
+  show('screen-loading');
+  document.getElementById('loading-msg').textContent = 'Discovering SMART endpoints…';
+
+  try {
+    // 1. Discover SMART endpoints
+    const disco = await fetch(`${baseUrl}/fhir/.well-known/smart-configuration`);
+    if (!disco.ok) throw new Error(`Discovery failed (${disco.status})`);
+    const config = await disco.json();
+
+    // 2. Generate PKCE pair
+    const verifier = generateCodeVerifier();
+    const challenge = await computeCodeChallenge(verifier);
+    const state = crypto.randomUUID();
+
+    // 3. Store state for callback
+    sessionStorage.setItem('pkce_verifier', verifier);
+    sessionStorage.setItem('auth_state', state);
+    sessionStorage.setItem('token_endpoint', config.token_endpoint);
+    sessionStorage.setItem('fhir_base', baseUrl);
+    sessionStorage.setItem('client_id', clientId);
+
+    // 4. Redirect to authorize
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: location.origin + location.pathname,
+      scope: 'launch/patient patient/Patient.rs patient/Observation.rs openid fhirUser',
+      state,
+      aud: `${baseUrl}/fhir`,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    });
+
+    location.href = `${config.authorization_endpoint}?${params}`;
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+async function handleCallback() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code) return false;
+
+  show('screen-loading');
+  document.getElementById('loading-msg').textContent = 'Exchanging authorization code…';
+
+  // Verify state
+  const savedState = sessionStorage.getItem('auth_state');
+  if (state !== savedState) {
+    showError('State mismatch — possible CSRF. Please try again.');
+    return true;
+  }
+
+  // Clean URL
+  history.replaceState(null, '', location.pathname);
+
+  try {
+    // Token exchange
+    const tokenEndpoint = sessionStorage.getItem('token_endpoint');
+    const clientId = sessionStorage.getItem('client_id');
+    const verifier = sessionStorage.getItem('pkce_verifier');
+
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: location.origin + location.pathname,
+      client_id: clientId,
+    });
+    if (verifier) body.set('code_verifier', verifier);
+
+    const res = await fetch(tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error_description || err.error || `Token exchange failed (${res.status})`);
+    }
+
+    const tokens = await res.json();
+    sessionStorage.removeItem('pkce_verifier');
+    sessionStorage.removeItem('auth_state');
+
+    // Fetch patient + vitals
+    document.getElementById('loading-msg').textContent = 'Loading vital signs…';
+    await loadDashboard(tokens);
+
+  } catch (e) {
+    showError(e.message);
+  }
+  return true;
+}
+
+// ── Data Loading ─────────────────────────────────────────────────────
+async function loadDashboard(tokens) {
+  const base = sessionStorage.getItem('fhir_base');
+  const headers = { Authorization: `Bearer ${tokens.access_token}`, Accept: 'application/fhir+json' };
+
+  // Fetch patient
+  const ptRes = await fetch(`${base}/fhir/Patient/${tokens.patient}`, { headers });
+  if (!ptRes.ok) throw new Error(`Failed to load patient (${ptRes.status})`);
+  const patient = await ptRes.json();
+
+  // Fetch vital-signs observations
+  const obsRes = await fetch(
+    `${base}/fhir/Observation?patient=${tokens.patient}&category=vital-signs&_sort=-date&_count=200`,
+    { headers }
+  );
+  if (!obsRes.ok) throw new Error(`Failed to load observations (${obsRes.status})`);
+  const obsBundle = await obsRes.json();
+
+  renderDashboard(patient, obsBundle.entry?.map(e => e.resource) || []);
+}
+
+// ── Rendering ────────────────────────────────────────────────────────
+function renderDashboard(patient, observations) {
+  // Patient banner
+  const name = patient.name?.[0];
+  const display = name ? `${name.given?.join(' ') || ''} ${name.family || ''}`.trim() : 'Unknown';
+  document.getElementById('avatar').textContent = display.charAt(0).toUpperCase();
+  document.getElementById('pt-name').textContent = display;
+
+  const dob = patient.birthDate || '';
+  const sex = patient.gender ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1) : '';
+  document.getElementById('pt-detail').textContent = [dob && `DOB: ${dob}`, sex].filter(Boolean).join(' · ');
+
+  // Parse observations into groups
+  const groups = {};
+  for (const obs of observations) {
+    const code = obs.code?.coding?.[0]?.code;
+    const date = obs.effectiveDateTime || obs.issued || '';
+    if (!code || !date) continue;
+
+    for (const [key, def] of Object.entries(VITAL_TYPES)) {
+      if (code !== def.loinc) continue;
+
+      if (key === 'blood-pressure') {
+        const sys = obs.component?.find(c => c.code?.coding?.[0]?.code === BP_SYSTOLIC);
+        const dia = obs.component?.find(c => c.code?.coding?.[0]?.code === BP_DIASTOLIC);
+        if (sys || dia) {
+          if (!groups[key]) groups[key] = [];
+          groups[key].push({
+            date,
+            systolic: sys?.valueQuantity?.value,
+            diastolic: dia?.valueQuantity?.value,
+          });
+        }
+      } else {
+        const val = obs.valueQuantity?.value;
+        if (val != null) {
+          if (!groups[key]) groups[key] = [];
+          groups[key].push({ date, value: val });
+        }
+      }
+    }
+  }
+
+  // Build tabs
+  const tabKeys = Object.keys(groups);
+  if (tabKeys.length === 0) {
+    showError('No vital sign observations found for this patient.');
+    return;
+  }
+
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML = '';
+  tabKeys.forEach((key, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-tab' + (i === 0 ? ' active' : '');
+    btn.textContent = VITAL_TYPES[key].label;
+    btn.onclick = () => selectTab(key, groups, tabKeys);
+    tabsEl.appendChild(btn);
+  });
+
+  show('screen-dashboard');
+  selectTab(tabKeys[0], groups, tabKeys);
+}
+
+function selectTab(key, groups, tabKeys) {
+  // Update tab buttons
+  const btns = document.querySelectorAll('.btn-tab');
+  const idx = tabKeys.indexOf(key);
+  btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+
+  const data = groups[key].slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  const def = VITAL_TYPES[key];
+
+  // Render chart
+  if (chart) chart.destroy();
+
+  const ctx = document.getElementById('chart').getContext('2d');
+
+  if (key === 'blood-pressure') {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d => fmtDate(d.date)),
+        datasets: [
+          {
+            label: 'Systolic',
+            data: data.map(d => d.systolic),
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139,92,246,0.1)',
+            tension: 0.3, fill: true, pointRadius: 3,
+          },
+          {
+            label: 'Diastolic',
+            data: data.map(d => d.diastolic),
+            borderColor: '#a78bfa',
+            backgroundColor: 'rgba(167,139,250,0.1)',
+            tension: 0.3, fill: true, pointRadius: 3,
+          },
+        ],
+      },
+      options: chartOptions(`${def.label} (${def.unit})`),
+    });
+  } else {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d => fmtDate(d.date)),
+        datasets: [{
+          label: def.label,
+          data: data.map(d => d.value),
+          borderColor: def.color,
+          backgroundColor: def.color + '1a',
+          tension: 0.3, fill: true, pointRadius: 3,
+        }],
+      },
+      options: chartOptions(`${def.label} (${def.unit})`),
+    });
+  }
+
+  // Render readings table
+  const tbody = document.getElementById('readings');
+  tbody.innerHTML = data.slice().reverse().slice(0, 20).map(d => {
+    const val = key === 'blood-pressure'
+      ? `${d.systolic ?? '–'} / ${d.diastolic ?? '–'} ${def.unit}`
+      : `${d.value} ${def.unit}`;
+    return `<tr><td>${fmtDate(d.date)}</td><td>${val}</td></tr>`;
+  }).join('');
+}
+
+function chartOptions(yLabel) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: true, position: 'top' } },
+    scales: {
+      x: { ticks: { maxTicksToShow: 8, maxRotation: 0 } },
+      y: { title: { display: true, text: yLabel } },
+    },
+  };
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────
+(async () => {
+  const wasCallback = await handleCallback();
+  if (!wasCallback) show('screen-launch');
+})();
+</script>
+</body>
+</html>
