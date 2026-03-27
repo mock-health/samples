@@ -1,0 +1,751 @@
+{
+  "info": {
+    "name": "mock.health FHIR API",
+    "description": "Synthetic FHIR R4 sandbox with SMART on FHIR 2.0 authorization and US Core 6.1 compliance.\n\n## Quick Start\n\n1. Sign up at [mock.health](https://mock.health)\n2. Set the `api_key` variable to your API key (get one from **Getting Started > Generate API Key**)\n3. Run **FHIR Search & Read > Search Patients** to start exploring\n\n## Authentication\n\nAll requests use `Authorization: Bearer {{api_key}}` by default. SMART on FHIR endpoints use OAuth 2.0 flows.\n\n## Documentation\n\n- [API Docs](https://mock.health/docs)\n- [SMART on FHIR Tutorial](https://mock.health/blog/smart-on-fhir-tutorial)\n- [GitHub](https://github.com/mock-health/samples)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.mock.health",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "patient_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "app_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "media_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "export_job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "group_id",
+      "value": "all-patients",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Getting Started",
+      "description": "Set up your API key and verify your account. Run these first.",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "me"]
+            },
+            "description": "Returns your user profile — user ID, email, account, plan, and API key prefix.\n\nRequires authentication via Auth0 JWT or API key."
+          }
+        },
+        {
+          "name": "Generate API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    if (json.api_key) {",
+                  "        pm.collectionVariables.set('api_key', json.api_key);",
+                  "        console.log('API key saved to collection variable: ' + json.api_key_prefix + '...');",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/me/api-key",
+              "host": ["{{base_url}}"],
+              "path": ["api", "me", "api-key"]
+            },
+            "description": "Generate or rotate your API key. Returns the plaintext key (shown once) and a prefix.\n\n**Important:** The response auto-saves the key to the `api_key` collection variable. All subsequent requests will use it.\n\nIf you already have a key, this revokes it and generates a new one."
+          }
+        }
+      ]
+    },
+    {
+      "name": "FHIR Search & Read",
+      "description": "Read-only FHIR R4 operations. Available on all plans.\n\nThe first request (Search Patients) auto-saves a `patient_id` for use in subsequent requests.",
+      "item": [
+        {
+          "name": "Search Patients",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var bundle = pm.response.json();",
+                  "    if (bundle.entry && bundle.entry.length > 0) {",
+                  "        var patient = bundle.entry[0].resource;",
+                  "        pm.collectionVariables.set('patient_id', patient.id);",
+                  "        var name = patient.name[0];",
+                  "        console.log('Saved patient_id: ' + patient.id + ' (' + name.given[0] + ' ' + name.family + ')');",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient?_count=10",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient"],
+              "query": [
+                { "key": "_count", "value": "10" }
+              ]
+            },
+            "description": "Search for patients. Returns a FHIR Bundle with up to `_count` results.\n\nThe first patient's ID is automatically saved to the `patient_id` variable for use in subsequent requests.\n\n**Common search parameters:**\n- `name` — search by name\n- `birthdate` — e.g. `1970-01-01`\n- `gender` — `male` or `female`\n- `_count` — results per page (default 20, max 200)\n- `_sort` — sort field (e.g. `-_lastUpdated`)"
+          }
+        },
+        {
+          "name": "Read Patient",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient", "{{patient_id}}"]
+            },
+            "description": "Read a single Patient resource by ID.\n\nRun **Search Patients** first to populate the `patient_id` variable."
+          }
+        },
+        {
+          "name": "Patient $everything",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}/$everything",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient", "{{patient_id}}", "$everything"]
+            },
+            "description": "Returns all resources in the patient's compartment — conditions, observations, medications, encounters, procedures, imaging studies, documents, and more.\n\nThis is the fastest way to get a complete picture of a patient."
+          }
+        },
+        {
+          "name": "Search Observations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation?patient={{patient_id}}&category=vital-signs&_count=20&_sort=-date",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Observation"],
+              "query": [
+                { "key": "patient", "value": "{{patient_id}}" },
+                { "key": "category", "value": "vital-signs" },
+                { "key": "_count", "value": "20" },
+                { "key": "_sort", "value": "-date" }
+              ]
+            },
+            "description": "Search observations for a patient. Defaults to vital signs, sorted newest first.\n\n**Common search parameters:**\n- `category` — `vital-signs`, `laboratory`, `exam`, `survey`, `procedure`\n- `code` — LOINC code (e.g. `8867-4` for heart rate, `9269-2` for GCS)\n- `date` — date range (e.g. `ge2024-01-01`)\n- `_sort` — `-date` for newest first"
+          }
+        },
+        {
+          "name": "Search Conditions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Condition?patient={{patient_id}}&_count=50",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Condition"],
+              "query": [
+                { "key": "patient", "value": "{{patient_id}}" },
+                { "key": "_count", "value": "50" }
+              ]
+            },
+            "description": "Search conditions (diagnoses) for a patient.\n\n**Search parameters:**\n- `category` — `encounter-diagnosis` or `problem-list-item`\n- `clinical-status` — `active`, `resolved`, `inactive`\n- `code` — SNOMED CT code"
+          }
+        },
+        {
+          "name": "Search MedicationRequests",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/MedicationRequest?patient={{patient_id}}&_count=50",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "MedicationRequest"],
+              "query": [
+                { "key": "patient", "value": "{{patient_id}}" },
+                { "key": "_count", "value": "50" }
+              ]
+            },
+            "description": "Search medication requests (prescriptions) for a patient.\n\n**Search parameters:**\n- `status` — `active`, `completed`, `stopped`\n- `intent` — `order`, `plan`"
+          }
+        },
+        {
+          "name": "Search Encounters",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Encounter?patient={{patient_id}}&_count=50&_sort=-date",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Encounter"],
+              "query": [
+                { "key": "patient", "value": "{{patient_id}}" },
+                { "key": "_count", "value": "50" },
+                { "key": "_sort", "value": "-date" }
+              ]
+            },
+            "description": "Search encounters (visits) for a patient.\n\n**Search parameters:**\n- `class` — `AMB` (outpatient), `IMP` (inpatient), `EMER` (emergency)\n- `type` — encounter type SNOMED code\n- `date` — date range"
+          }
+        },
+        {
+          "name": "Search DocumentReferences",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/DocumentReference?patient={{patient_id}}&_count=20",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "DocumentReference"],
+              "query": [
+                { "key": "patient", "value": "{{patient_id}}" },
+                { "key": "_count", "value": "20" }
+              ]
+            },
+            "description": "Search clinical documents (notes, discharge summaries, H&P) for a patient.\n\nDocument content is base64-encoded in `content[0].attachment.data`.\n\n**Search parameters:**\n- `type` — LOINC document type (e.g. `18842-5` for discharge summary)\n- `category` — `clinical-note`"
+          }
+        },
+        {
+          "name": "CapabilityStatement",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/metadata",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "metadata"]
+            },
+            "description": "Returns the server's CapabilityStatement — supported resource types, search parameters, operations, and SMART security extensions.\n\nThis is a public endpoint (no auth required)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "FHIR Write (Pro Plan)",
+      "description": "Create, update, and delete FHIR resources. Requires a Pro plan with a provisioned sandbox.\n\n**Important:** All resources must include the synthetic attestation tag in `meta.tag`.",
+      "item": [
+        {
+          "name": "Create Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/fhir+json" },
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Patient\",\n  \"meta\": {\n    \"tag\": [\n      {\n        \"system\": \"https://mock.health/synthetic-attestation\",\n        \"code\": \"synthetic\"\n      }\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://mock.health/patient-id\",\n      \"value\": \"test-patient-001\"\n    }\n  ],\n  \"name\": [\n    {\n      \"use\": \"official\",\n      \"family\": \"Smith\",\n      \"given\": [\"Jane\"]\n    }\n  ],\n  \"gender\": \"female\",\n  \"birthDate\": \"1990-03-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient"]
+            },
+            "description": "Create a new Patient resource.\n\n**Required:** The `meta.tag` with `synthetic-attestation` is mandatory for all writes. The server rejects resources without it.\n\nReturns the created resource with a server-assigned `id` in the `Location` header."
+          }
+        },
+        {
+          "name": "Update Patient",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/fhir+json" },
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Patient\",\n  \"id\": \"{{patient_id}}\",\n  \"meta\": {\n    \"tag\": [\n      {\n        \"system\": \"https://mock.health/synthetic-attestation\",\n        \"code\": \"synthetic\"\n      }\n    ]\n  },\n  \"name\": [\n    {\n      \"use\": \"official\",\n      \"family\": \"Smith\",\n      \"given\": [\"Jane\", \"Marie\"]\n    }\n  ],\n  \"gender\": \"female\",\n  \"birthDate\": \"1990-03-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient", "{{patient_id}}"]
+            },
+            "description": "Replace a Patient resource. The `id` in the body must match the URL.\n\n**Required:** Synthetic attestation tag in `meta.tag`."
+          }
+        },
+        {
+          "name": "Delete Patient",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient", "{{patient_id}}"]
+            },
+            "description": "Delete a Patient resource. Returns 204 No Content on success."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bulk Export",
+      "description": "FHIR Bulk Data Access (SMART Backend Services). Export patient data as NDJSON files.\n\nWorkflow: Kick off → Poll status → Download files.",
+      "item": [
+        {
+          "name": "Kick Off Patient Export",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "    var contentLocation = pm.response.headers.get('Content-Location');",
+                  "    if (contentLocation) {",
+                  "        var jobId = contentLocation.split('_jobId=')[1];",
+                  "        if (jobId) {",
+                  "            pm.collectionVariables.set('export_job_id', jobId);",
+                  "            console.log('Saved export_job_id: ' + jobId);",
+                  "        }",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" },
+              { "key": "Prefer", "value": "respond-async" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/$export?_type=Patient,Condition,Observation",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Patient", "$export"],
+              "query": [
+                { "key": "_type", "value": "Patient,Condition,Observation" }
+              ]
+            },
+            "description": "Start a bulk data export of all patients. Returns 202 Accepted with a `Content-Location` header containing the poll URL.\n\nThe `export_job_id` is auto-saved for the poll and download requests.\n\n**Parameters:**\n- `_type` — comma-separated resource types to include\n- `_since` — only resources updated after this date\n- `_outputFormat` — `application/fhir+ndjson` (default)"
+          }
+        },
+        {
+          "name": "Kick Off Group Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/fhir+json" },
+              { "key": "Prefer", "value": "respond-async" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/Group/{{group_id}}/$export",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "Group", "{{group_id}}", "$export"]
+            },
+            "description": "Start a bulk export scoped to a specific Group. Same workflow as Patient export."
+          }
+        },
+        {
+          "name": "Poll Export Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/$export-poll-status?_jobId={{export_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "$export-poll-status"],
+              "query": [
+                { "key": "_jobId", "value": "{{export_job_id}}" }
+              ]
+            },
+            "description": "Check the status of a bulk export.\n\n- **202** — still processing (check `X-Progress` header)\n- **200** — complete, response body contains download URLs\n- **500** — failed"
+          }
+        },
+        {
+          "name": "Download Export File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/$export-download/{{export_job_id}}/Patient.ndjson",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "$export-download", "{{export_job_id}}", "Patient.ndjson"]
+            },
+            "description": "Download an NDJSON file from a completed export. Replace `Patient.ndjson` with the filename from the poll response.\n\nEach line is a complete FHIR resource JSON object."
+          }
+        },
+        {
+          "name": "Cancel Export",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/$export-poll-status?_jobId={{export_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", "$export-poll-status"],
+              "query": [
+                { "key": "_jobId", "value": "{{export_job_id}}" }
+              ]
+            },
+            "description": "Cancel a running bulk export job."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation",
+      "description": "Validate FHIR resources against US Core 6.1.0 profiles.",
+      "item": [
+        {
+          "name": "Validate FHIR Resource",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/fhir+json" },
+              { "key": "Accept", "value": "application/fhir+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Patient\",\n  \"name\": [\n    {\n      \"family\": \"Smith\",\n      \"given\": [\"Jane\"]\n    }\n  ],\n  \"gender\": \"female\",\n  \"birthDate\": \"1990-03-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/validate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "validate"]
+            },
+            "description": "Validate a FHIR resource or Bundle against US Core 6.1.0.\n\nReturns an OperationOutcome with:\n- **error** — missing required fields\n- **warning** — missing Must Support fields\n- **information** — conformance confirmation\n\nYou can submit a single resource or an entire Bundle."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Media",
+      "description": "Retrieve and render medical images (DICOM, X-ray, CT, MRI).",
+      "item": [
+        {
+          "name": "Get DICOM Content",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/media/{{media_id}}/content",
+              "host": ["{{base_url}}"],
+              "path": ["api", "media", "{{media_id}}", "content"]
+            },
+            "description": "Download the raw binary content of a Media resource.\n\nFor DICOM images, returns `application/dicom` bytes. For other formats (JPEG, PNG), returns the original bytes.\n\nTo find media IDs, search for ImagingStudy resources and look at the `endpoint` references."
+          }
+        },
+        {
+          "name": "Render as PNG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/media/{{media_id}}/render",
+              "host": ["{{base_url}}"],
+              "path": ["api", "media", "{{media_id}}", "render"]
+            },
+            "description": "Get a browser-displayable PNG preview of a medical image.\n\nConverts DICOM to PNG with proper windowing and rescale. Non-DICOM images are returned as-is."
+          }
+        }
+      ]
+    },
+    {
+      "name": "SMART on FHIR",
+      "description": "SMART App Launch STU2.1 endpoints. These implement the OAuth 2.0 authorization flow for FHIR applications.\n\nSee the [SMART on FHIR tutorial](https://mock.health/blog/smart-on-fhir-tutorial) for a step-by-step walkthrough.",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "SMART Discovery",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/.well-known/smart-configuration",
+              "host": ["{{base_url}}"],
+              "path": ["fhir", ".well-known", "smart-configuration"]
+            },
+            "description": "Step 1 of the SMART launch: discover authorization and token endpoints.\n\nReturns the SMART configuration document with:\n- `authorization_endpoint`\n- `token_endpoint`\n- `scopes_supported`\n- `capabilities`\n\nNo authentication required."
+          }
+        },
+        {
+          "name": "OpenID Configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/.well-known/openid-configuration",
+              "host": ["{{base_url}}"],
+              "path": [".well-known", "openid-configuration"]
+            },
+            "description": "OpenID Connect discovery document. Required for `sso-openid-connect` capability."
+          }
+        },
+        {
+          "name": "JWKS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/smart/jwks",
+              "host": ["{{base_url}}"],
+              "path": ["smart", "jwks"]
+            },
+            "description": "JSON Web Key Set for verifying ID tokens issued by the authorization server."
+          }
+        },
+        {
+          "name": "Token Exchange",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "authorization_code" },
+                { "key": "code", "value": "{{auth_code}}" },
+                { "key": "redirect_uri", "value": "http://localhost:8080/callback" },
+                { "key": "client_id", "value": "{{app_client_id}}" },
+                { "key": "code_verifier", "value": "{{code_verifier}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/smart/token",
+              "host": ["{{base_url}}"],
+              "path": ["smart", "token"]
+            },
+            "description": "Exchange an authorization code for an access token (Step 4 of SMART launch).\n\nSupports:\n- `authorization_code` — standard SMART launch\n- `refresh_token` — refresh an expired token\n- `client_credentials` — backend service auth (confidential clients)"
+          }
+        },
+        {
+          "name": "UserInfo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{access_token}}", "type": "string" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/smart/userinfo",
+              "host": ["{{base_url}}"],
+              "path": ["smart", "userinfo"]
+            },
+            "description": "OpenID Connect UserInfo endpoint. Returns claims about the authenticated user.\n\nRequires a SMART access token with `openid` scope."
+          }
+        },
+        {
+          "name": "Token Introspect",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "{{access_token}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/smart/introspect",
+              "host": ["{{base_url}}"],
+              "path": ["smart", "introspect"]
+            },
+            "description": "Token introspection (RFC 7662). Returns metadata about an access token — whether it's active, its scopes, expiry, and associated client.\n\nRequires client authentication."
+          }
+        },
+        {
+          "name": "Token Revoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "{{access_token}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/smart/revoke",
+              "host": ["{{base_url}}"],
+              "path": ["smart", "revoke"]
+            },
+            "description": "Revoke an access or refresh token (RFC 7009). Always returns 200 regardless of whether the token was found."
+          }
+        }
+      ]
+    },
+    {
+      "name": "SMART App Management",
+      "description": "Register and manage SMART on FHIR application credentials.\n\nCreate an app here to get a `client_id` for the OAuth flow.",
+      "item": [
+        {
+          "name": "Register App",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var app = pm.response.json();",
+                  "    pm.collectionVariables.set('app_id', app.id);",
+                  "    console.log('Saved app_id: ' + app.id + ', client_id: ' + app.client_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_name\": \"My SMART App\",\n  \"redirect_uris\": [\"http://localhost:8080/callback\"],\n  \"scopes\": [\"launch/patient\", \"patient/Patient.rs\", \"patient/Observation.rs\", \"openid\", \"fhirUser\"],\n  \"is_confidential\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/smart/apps",
+              "host": ["{{base_url}}"],
+              "path": ["api", "smart", "apps"]
+            },
+            "description": "Register a new SMART on FHIR app. Returns the app details including a `client_id`.\n\nThe `app_id` is auto-saved for use in update/delete requests.\n\n**Fields:**\n- `client_name` — display name\n- `redirect_uris` — OAuth callback URLs (must match exactly)\n- `scopes` — requested FHIR scopes\n- `is_confidential` — `true` for backend apps with a client secret\n- `launch_url` — (optional) EHR launch URL\n- `logo_uri` — (optional) app logo"
+          }
+        },
+        {
+          "name": "List Apps",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/smart/apps",
+              "host": ["{{base_url}}"],
+              "path": ["api", "smart", "apps"]
+            },
+            "description": "List all SMART apps registered to your account."
+          }
+        },
+        {
+          "name": "Get App Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/smart/apps/{{app_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "smart", "apps", "{{app_id}}"]
+            },
+            "description": "Get details for a single SMART app."
+          }
+        },
+        {
+          "name": "Update App",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_name\": \"My Updated SMART App\",\n  \"redirect_uris\": [\"http://localhost:8080/callback\", \"https://myapp.com/callback\"],\n  \"scopes\": [\"launch/patient\", \"patient/Patient.rs\", \"patient/Observation.rs\", \"patient/Condition.rs\", \"openid\", \"fhirUser\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/smart/apps/{{app_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "smart", "apps", "{{app_id}}"]
+            },
+            "description": "Update a SMART app's configuration. Only include fields you want to change."
+          }
+        },
+        {
+          "name": "Delete App",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/smart/apps/{{app_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "smart", "apps", "{{app_id}}"]
+            },
+            "description": "Deactivate a SMART app (soft delete). The app's client_id will no longer work for authorization."
+          }
+        }
+      ]
+    }
+  ]
+}
