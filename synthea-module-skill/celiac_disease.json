@@ -1,0 +1,298 @@
+{
+  "name": "Celiac Disease",
+  "remarks": [
+    "Models celiac disease onset, diagnosis (serology + endoscopy), and lifelong management.",
+    "Prevalence: ~1% globally, peak onset in childhood and ages 30-50.",
+    "All codes validated against tx.fhir.org (2025-02 SNOMED, LOINC 2.81).",
+    "Generated with the synthea-module-skill Claude Code skill."
+  ],
+  "states": {
+    "Initial": {
+      "type": "Initial",
+      "direct_transition": "Age_Guard"
+    },
+
+    "Age_Guard": {
+      "type": "Guard",
+      "remarks": ["Wait until at least age 2 — celiac rarely presents before gluten introduction"],
+      "allow": {
+        "condition_type": "Age",
+        "operator": ">=",
+        "quantity": 2,
+        "unit": "years"
+      },
+      "direct_transition": "Prevalence_Check"
+    },
+
+    "Prevalence_Check": {
+      "type": "Delay",
+      "remarks": [
+        "~1% lifetime prevalence. With weekly timesteps over ~70 years (3640 steps),",
+        "P(onset per step) = 1 - (1 - 0.01)^(1/3640) ≈ 0.0000028.",
+        "Using 0.0003 per month (12 checks/year) to approximate."
+      ],
+      "exact": { "quantity": 1, "unit": "months" },
+      "complex_transition": [
+        {
+          "condition": {
+            "condition_type": "Age",
+            "operator": "<=",
+            "quantity": 12,
+            "unit": "years"
+          },
+          "remarks": ["Higher onset rate in childhood"],
+          "distributions": [
+            { "distribution": 0.00005, "transition": "Symptom_Onset" },
+            { "distribution": 0.99995, "transition": "Prevalence_Check" }
+          ]
+        },
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              { "condition_type": "Age", "operator": ">=", "quantity": 30, "unit": "years" },
+              { "condition_type": "Age", "operator": "<=", "quantity": 50, "unit": "years" }
+            ]
+          },
+          "remarks": ["Second peak in 30-50 age range"],
+          "distributions": [
+            { "distribution": 0.00004, "transition": "Symptom_Onset" },
+            { "distribution": 0.99996, "transition": "Prevalence_Check" }
+          ]
+        },
+        {
+          "distributions": [
+            { "distribution": 0.00001, "transition": "Symptom_Onset" },
+            { "distribution": 0.99999, "transition": "Prevalence_Check" }
+          ]
+        }
+      ]
+    },
+
+    "Symptom_Onset": {
+      "type": "SetAttribute",
+      "attribute": "celiac_suspected",
+      "value": true,
+      "direct_transition": "Diagnostic_Encounter"
+    },
+
+    "Diagnostic_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "ambulatory",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "185347001",
+          "display": "Encounter for problem (procedure)"
+        }
+      ],
+      "direct_transition": "TTG_IgA_Test"
+    },
+
+    "TTG_IgA_Test": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "U/mL",
+      "target_encounter": "Diagnostic_Encounter",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "31017-7",
+          "display": "Tissue transglutaminase IgA Ab [Units/volume] in Serum"
+        }
+      ],
+      "range": { "low": 15, "high": 150 },
+      "remarks": ["Positive tTG-IgA: >10 U/mL is suggestive, we generate clearly positive values"],
+      "direct_transition": "End_Diagnostic_Encounter"
+    },
+
+    "End_Diagnostic_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Referral_Delay"
+    },
+
+    "Referral_Delay": {
+      "type": "Delay",
+      "remarks": ["Wait for GI referral — typically 2-6 weeks"],
+      "range": { "low": 2, "high": 6, "unit": "weeks" },
+      "direct_transition": "Endoscopy_Encounter"
+    },
+
+    "Endoscopy_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "ambulatory",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "185347001",
+          "display": "Encounter for problem (procedure)"
+        }
+      ],
+      "direct_transition": "Celiac_Diagnosis"
+    },
+
+    "Celiac_Diagnosis": {
+      "type": "ConditionOnset",
+      "assign_to_attribute": "celiac_disease",
+      "target_encounter": "Endoscopy_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "396331005",
+          "display": "Celiac disease (disorder)"
+        }
+      ],
+      "direct_transition": "Endoscopy_Procedure"
+    },
+
+    "Endoscopy_Procedure": {
+      "type": "Procedure",
+      "reason": "Celiac_Diagnosis",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "76009000",
+          "display": "Esophagogastroduodenoscopy"
+        }
+      ],
+      "duration": { "low": 20, "high": 40, "unit": "minutes" },
+      "direct_transition": "Duodenal_Biopsy"
+    },
+
+    "Duodenal_Biopsy": {
+      "type": "Procedure",
+      "reason": "Celiac_Diagnosis",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "235261009",
+          "display": "Biopsy of duodenum"
+        }
+      ],
+      "duration": { "low": 5, "high": 15, "unit": "minutes" },
+      "direct_transition": "Prescribe_GFD"
+    },
+
+    "Prescribe_GFD": {
+      "type": "CarePlanStart",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "160671006",
+          "display": "Gluten free diet"
+        }
+      ],
+      "activities": [
+        {
+          "system": "SNOMED-CT",
+          "code": "11816003",
+          "display": "Diet education (procedure)"
+        }
+      ],
+      "direct_transition": "Check_Iron_Deficiency"
+    },
+
+    "Check_Iron_Deficiency": {
+      "type": "Simple",
+      "remarks": ["~50% of newly diagnosed celiacs have iron deficiency anemia"],
+      "distributed_transition": [
+        { "distribution": 0.50, "transition": "Iron_Deficiency_Onset" },
+        { "distribution": 0.50, "transition": "End_Endoscopy_Encounter" }
+      ]
+    },
+
+    "Iron_Deficiency_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "Endoscopy_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "87522002",
+          "display": "Iron deficiency anemia (disorder)"
+        }
+      ],
+      "direct_transition": "Prescribe_Iron"
+    },
+
+    "Prescribe_Iron": {
+      "type": "MedicationOrder",
+      "reason": "Iron_Deficiency_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "310325",
+          "display": "ferrous sulfate 325 MG (iron 65 MG) Oral Tablet"
+        }
+      ],
+      "prescription": {
+        "dosage": { "amount": 1, "frequency": 1, "period": 1, "unit": "days" },
+        "duration": { "quantity": 90, "unit": "days" }
+      },
+      "direct_transition": "End_Endoscopy_Encounter"
+    },
+
+    "End_Endoscopy_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Monitoring_Delay"
+    },
+
+    "Monitoring_Delay": {
+      "type": "Delay",
+      "remarks": ["Annual follow-up with repeat tTG-IgA to monitor adherence"],
+      "exact": { "quantity": 1, "unit": "years" },
+      "direct_transition": "Followup_Encounter"
+    },
+
+    "Followup_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "ambulatory",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "390906007",
+          "display": "Follow-up encounter (procedure)"
+        }
+      ],
+      "direct_transition": "Followup_TTG"
+    },
+
+    "Followup_TTG": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "U/mL",
+      "target_encounter": "Followup_Encounter",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "31017-7",
+          "display": "Tissue transglutaminase IgA Ab [Units/volume] in Serum"
+        }
+      ],
+      "remarks": ["On GFD, tTG-IgA should normalize. Generate low-positive to normal values."],
+      "range": { "low": 1, "high": 12 },
+      "direct_transition": "Followup_Ferritin"
+    },
+
+    "Followup_Ferritin": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "ng/mL",
+      "target_encounter": "Followup_Encounter",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "2276-4",
+          "display": "Ferritin [Mass/volume] in Serum or Plasma"
+        }
+      ],
+      "range": { "low": 20, "high": 200 },
+      "direct_transition": "End_Followup_Encounter"
+    },
+
+    "End_Followup_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Monitoring_Delay"
+    }
+  },
+  "gmf_version": 2
+}
