@@ -43,7 +43,7 @@ Each row backs up a specific section of the blog post. The 10 queries are not ar
 | 3 | `observation_search_total_accurate` | The fix — passing `_total=accurate` makes HAPI return the count. |
 | 4 | `q7_error_unsupported_param` | **The silent-ignore.** HAPI 400s on a misspelled search parameter. GCP returns a 200 with the unfiltered result set. The most dangerous DX divergence in the post. |
 | 5 | `observation_by_code` | `Observation?code=8480-6` (systolic BP) returns 0 on both. Synthea encodes BP as a panel — the systolic code lives in `component[]`, not at the top level. |
-| 6 | `q1_uscore_observation_combo` | The fix — `combo-code` (US Core extension) matches `code` OR `component.code`. Returns the BP panels query #5 misses. |
+| 6 | `q1_uscore_observation_combo` | The fix — `combo-code` (base FHIR R4 search parameter on Observation) matches `code` OR `component.code`. Returns the BP panels query #5 misses. |
 | 7 | `q2_history_type` | `Patient/_history` works on HAPI. GCP returns `400 invalid ID '_history'`. |
 | 8 | `q6_expand_valueset` | `ValueSet/$expand` exists on HAPI. GCP returns `400 invalid ID '$expand'`. |
 | 9 | `q6_lookup_loinc` | `CodeSystem/$lookup` exists on HAPI. GCP returns `400 invalid ID '$lookup'`. Both fail in this reproducer for **different reasons** (HAPI: not loaded, GCP: not implemented) — that is the point. |

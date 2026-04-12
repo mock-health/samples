@@ -75,7 +75,7 @@ queries:
 
   - name: q1_uscore_observation_combo
     blog_section: "Search behavior diverges in ways you will not notice"
-    description: The fix — search the same code via the US Core combo-code parameter, which matches BOTH Observation.code AND Observation.component.code. Returns the BP panels the previous query missed.
+    description: The fix — search the same code via the FHIR R4 combo-code parameter (defined in the base spec for Observation), which matches BOTH Observation.code AND Observation.component.code. Returns the BP panels the previous query missed.
     path: Observation
     params:
       combo-code: "http://loinc.org|8480-6"
