@@ -1,0 +1,124 @@
+# 10 hand-picked FHIR queries that back up the claims in the
+# "Same FHIR, Different Answers" blog post:
+#   https://mock.health/blog/hapi-vs-gcp-healthcare-api
+#
+# Each query is sent verbatim to HAPI (and to GCP Healthcare API if
+# GCP_FHIR_STORE_URL is set) by compare.py. The blog_section field
+# points at the section of the post the query backs up. The expected_*
+# fields describe what each backend returns when you run this against
+# the matched dataset described in the blog. They are shown verbatim in
+# the Verdict column when GCP is disabled, so you still learn the claim.
+#
+# This subset is the trust-building reproducer for the post. The full
+# 39-query catalog (organized around Darren Devitt's nine FHIR
+# architecture decision questions) lives in the fhir-studio repo's
+# scripts/backend_comparison_queries.yaml.
+#
+# Schema:
+#   name:           short identifier (used as a column header)
+#   blog_section:   the post section title this query backs up
+#   description:    one-liner shown above the table row
+#   method:         GET (default) or POST
+#   path:           FHIR path after /fhir/ (e.g. "Patient" or "metadata")
+#   params:         map of query parameters
+#   body:           request body (POST only)
+#   expected_hapi:  what HAPI returns on the matched dataset (free text)
+#   expected_gcp:   what GCP returns on the matched dataset (free text)
+
+queries:
+  - name: capability_statement
+    blog_section: "Operations support is where the gap is biggest"
+    description: Server CapabilityStatement from /metadata. Both servers return a valid CapabilityStatement, but the top-level fields differ.
+    path: metadata
+    expected_hapi: "200 — CapabilityStatement with implementation, instantiates, name, software, text"
+    expected_gcp:  "200 — CapabilityStatement with description, experimental, url, version (different shape)"
+
+  - name: observation_search_default
+    blog_section: "Search behavior diverges in ways you will not notice"
+    description: Search Observation with _count=10 and no _total. HAPI omits Bundle.total by default when the result set is larger than the page; GCP always populates total.
+    path: Observation
+    params:
+      _count: "10"
+    expected_hapi: "200 — Bundle with id and meta.lastUpdated, total=null (HAPI omits total by default; pass _total=accurate to get it)"
+    expected_gcp:  "200 — Bundle with no id, no meta, total populated (GCP always returns total)"
+
+  - name: observation_search_total_accurate
+    blog_section: "Search behavior diverges in ways you will not notice"
+    description: Same query with _total=accurate. Confirms HAPI omits total only by default, not by capability.
+    path: Observation
+    params:
+      _count: "1"
+      _total: accurate
+    expected_hapi: "200 — Bundle.total = (count of observations in your store, e.g. 37)"
+    expected_gcp:  "200 — Bundle.total = (count of observations in your store)"
+
+  - name: q7_error_unsupported_param
+    blog_section: "The silent-ignore that will eat your filter"
+    description: Sends a deliberately misspelled search parameter. THE most important divergence in the post.
+    path: Patient
+    params:
+      this-is-not-a-real-param: garbage
+      _count: "1"
+    expected_hapi: "400 — OperationOutcome listing every valid Patient search parameter"
+    expected_gcp:  "200 — Bundle with the FULL UNFILTERED patient list (the unknown filter is silently dropped)"
+
+  - name: observation_by_code
+    blog_section: "Search behavior diverges in ways you will not notice"
+    description: Search Observation by LOINC code 8480-6 (systolic blood pressure). The default `code` parameter only matches the top-level Observation.code field, not Observation.component.code. Synthea encodes BP as a panel (85354-9) with systolic in component[0], so this query returns ZERO on both servers despite the bundle containing BP data.
+    path: Observation
+    params:
+      code: "http://loinc.org|8480-6"
+      _count: "1"
+      _total: accurate
+    expected_hapi: "200 — Bundle.total = 0 (no top-level matches; this is correct, BP lives in components)"
+    expected_gcp:  "200 — Bundle.total = 0 (same reason)"
+
+  - name: q1_uscore_observation_combo
+    blog_section: "Search behavior diverges in ways you will not notice"
+    description: The fix — search the same code via the US Core combo-code parameter, which matches BOTH Observation.code AND Observation.component.code. Returns the BP panels the previous query missed.
+    path: Observation
+    params:
+      combo-code: "http://loinc.org|8480-6"
+      _count: "1"
+      _total: accurate
+    expected_hapi: "200 — Bundle.total = 3+ (matches the BP panels via component code)"
+    expected_gcp:  "200 — Bundle.total = 3+ (same)"
+
+  - name: q2_history_type
+    blog_section: "Operations support is where the gap is biggest"
+    description: Type-level history endpoint (Patient/_history). HAPI exposes it. GCP does not even recognize the URL pattern.
+    path: Patient/_history
+    params:
+      _count: "1"
+    expected_hapi: "200 — Bundle (history-search type) with the latest patient versions"
+    expected_gcp:  "400 — OperationOutcome: invalid ID '_history'"
+
+  - name: q6_expand_valueset
+    blog_section: "Operations support is where the gap is biggest"
+    description: $expand on a US Core ValueSet. The terminology operation that drives every clinical autocomplete picker for SNOMED, LOINC, ICD-10.
+    path: ValueSet/$expand
+    params:
+      url: "http://hl7.org/fhir/us/core/ValueSet/us-core-condition-code"
+      count: "5"
+    expected_hapi: "404 — OperationOutcome: Unknown ValueSet (HAPI knows what $expand is, the test ValueSet is not pre-loaded)"
+    expected_gcp:  "400 — OperationOutcome: invalid ID '$expand' (GCP does not implement the operation at all)"
+
+  - name: q6_lookup_loinc
+    blog_section: "Operations support is where the gap is biggest"
+    description: $lookup on the LOINC CodeSystem. The operation that fetches the display string for a coded value. Both fail, but for DIFFERENT reasons — that is the divergence the row demonstrates.
+    path: CodeSystem/$lookup
+    params:
+      system: "http://loinc.org"
+      code: "85354-9"
+    expected_hapi: "404 — OperationOutcome: Unable to find code (HAPI recognizes $lookup; LOINC content is not pre-loaded)"
+    expected_gcp:  "400 — OperationOutcome: invalid ID '$lookup' (GCP does not implement the operation at all)"
+
+  - name: patient_revinclude_wildcard
+    blog_section: "Search behavior diverges in ways you will not notice"
+    description: Patient search with _revinclude=* (wildcard reverse-include). HAPI returns every resource that points at each patient. GCP rejects the wildcard.
+    path: Patient
+    params:
+      _count: "5"
+      _revinclude: "*"
+    expected_hapi: "200 — Bundle with patients + everything that references them (often hundreds of entries)"
+    expected_gcp:  "400 — OperationOutcome: invalid _revinclude query: *; expected format is [resource_type]:[parameter]"
