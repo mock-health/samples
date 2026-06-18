@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Launching… — SMART on FHIR Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1e293b; background: #f8fafc; line-height: 1.5;
+      display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem 1rem;
+    }
+    .card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 0.75rem;
+      padding: 2rem; max-width: 480px; width: 100%; text-align: center;
+    }
+    .spinner {
+      width: 2.5rem; height: 2.5rem; border: 3px solid #e2e8f0;
+      border-top-color: #3b82f6; border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 { font-size: 1.125rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p { font-size: 0.875rem; color: #475569; word-break: break-word; }
+    .error { border-color: #fca5a5; background: #fef2f2; }
+    .error h1 { color: #dc2626; }
+    .error p { color: #991b1b; text-align: left; }
+    code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.8125rem; }
+    label { display: block; text-align: left; font-size: 0.8125rem; font-weight: 600; color: #475569; margin: 1rem 0 0.375rem; }
+    input {
+      width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.5rem;
+      font-size: 0.875rem; outline: none;
+    }
+    button {
+      cursor: pointer; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;
+      padding: 0.625rem 1.25rem; background: #3b82f6; color: #fff; width: 100%; margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="spinner"></div>
+    <h1>Launching app…</h1>
+    <p id="msg">Reading EHR launch context</p>
+  </div>
+
+<script>
+// =============================================================================
+// EHR Launch entry point.
+//
+// An EHR (or the mock.health SMART Launcher acting as one) opens this page with:
+//
+//     launch.html?iss=https://api.mock.health/fhir&launch=<one-time-token>
+//
+//   • iss    — the FHIR server's base URL. We run discovery against it. Never
+//              trust a hardcoded server here; the EHR tells us where it lives.
+//   • launch — an opaque, single-use token that encodes the patient already on
+//              screen in the EHR. We hand it back during /authorize and the
+//              server resolves it to the patient context (no patient picker).
+//
+// Unlike standalone launch (index.html on its own), the EHR does NOT send our
+// client_id — every SMART app knows its own. Set it once below.
+// =============================================================================
+
+// 1) Your registered SMART app's Client ID. Paste it here once.
+//    (For convenience you can also override it at runtime with ?client_id=... in
+//    the launch URL, but a real EHR launch only sends iss + launch.)
+const CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE";
+
+// 2) Scopes. Note `launch` (not `launch/patient`): in an EHR launch the patient
+//    context arrives via the launch token, so we ask for `launch`, not a picker.
+const SCOPE = "launch openid fhirUser patient/Patient.rs patient/Observation.rs";
+
+// --- PKCE helpers (identical to index.html) ---------------------------------
+function generateCodeVerifier(len = 64) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return base64url(arr);
+}
+async function computeCodeChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return base64url(new Uint8Array(digest));
+}
+function base64url(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fail(html) {
+  const card = document.getElementById('card');
+  card.className = 'card error';
+  card.innerHTML = html;
+}
+
+function setMsg(text) { document.getElementById('msg').textContent = text; }
+
+// --- Launch flow ------------------------------------------------------------
+(async () => {
+  const qs = new URLSearchParams(location.search);
+  const iss = qs.get('iss');
+  const launch = qs.get('launch');
+  const clientId = (qs.get('client_id') || CLIENT_ID).trim();
+
+  // Opened directly, with no EHR context? Explain how to get here.
+  if (!iss || !launch) {
+    fail(`<h1>No launch context</h1>
+      <p>This page is the <strong>EHR launch</strong> entry point. It expects an
+      <code>iss</code> and <code>launch</code> parameter, which the EHR supplies
+      when it launches your app.</p>
+      <p style="margin-top:0.75rem">To try it on mock.health: go to
+      <strong>Sandbox → SMART Launcher</strong>, pick this app and a patient,
+      choose <strong>EHR Launch</strong>, and click Launch.</p>
+      <p style="margin-top:0.75rem">For a no-EHR demo, use the standalone
+      <a href="index.html">index.html</a> instead.</p>`);
+    return;
+  }
+
+  if (!clientId || clientId === 'PASTE_YOUR_CLIENT_ID_HERE') {
+    fail(`<h1>Client ID not set</h1>
+      <p>Open <code>launch.html</code> and set <code>CLIENT_ID</code> to your
+      registered SMART app's Client ID, then launch again.</p>
+      <label for="cid">Or paste it to continue now</label>
+      <input id="cid" placeholder="client_id">
+      <button onclick="(()=>{const v=document.getElementById('cid').value.trim();
+        if(v){const u=new URL(location.href);u.searchParams.set('client_id',v);location.href=u}})()">
+        Continue</button>`);
+    return;
+  }
+
+  try {
+    // The FHIR base is `iss`. Our data fetches in index.html append `/fhir`
+    // themselves, so we store the base WITHOUT the trailing `/fhir` segment.
+    const baseUrl = iss.replace(/\/+$/, '').replace(/\/fhir$/, '');
+
+    setMsg('Discovering SMART endpoints…');
+    const disco = await fetch(`${baseUrl}/fhir/.well-known/smart-configuration`);
+    if (!disco.ok) throw new Error(`Discovery failed (${disco.status}) against ${baseUrl}`);
+    const config = await disco.json();
+
+    setMsg('Preparing secure handshake…');
+    const verifier = generateCodeVerifier();
+    const challenge = await computeCodeChallenge(verifier);
+    const state = crypto.randomUUID();
+
+    // index.html reads these exact keys when it handles the callback — so the
+    // two files share one session and index.html needs no changes.
+    sessionStorage.setItem('pkce_verifier', verifier);
+    sessionStorage.setItem('auth_state', state);
+    sessionStorage.setItem('token_endpoint', config.token_endpoint);
+    sessionStorage.setItem('fhir_base', baseUrl);
+    sessionStorage.setItem('client_id', clientId);
+
+    // Come back to index.html (the app UI), not to this launcher page.
+    const redirectUri = location.origin +
+      location.pathname.replace(/launch\.html$/, 'index.html');
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: SCOPE,
+      state,
+      aud: `${baseUrl}/fhir`,
+      launch,                       // <-- the EHR launch token, echoed back
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    });
+
+    setMsg('Redirecting to authorize…');
+    location.href = `${config.authorization_endpoint}?${params}`;
+  } catch (e) {
+    fail(`<h1>Launch failed</h1><p>${e.message}</p>`);
+  }
+})();
+</script>
+</body>
+</html>
